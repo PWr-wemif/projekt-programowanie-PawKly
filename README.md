@@ -1,5 +1,4 @@
 # projekt-programowanie-PawKly
-projekt-programowanie-PawKly created by GitHub Classroom
 
 Mój program / aplikacja ma na celu ułatwienie organizacji treningów siłowych. 
 
