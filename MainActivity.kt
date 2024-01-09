@@ -17,24 +17,22 @@ import androidx.navigation.NavController
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
+import android.content.Context
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.LocalContext
+import android.app.Activity
+import android.content.Intent
+import androidx.compose.ui.res.stringResource
+import android.content.SharedPreferences
+import java.util.Locale
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.MutableState
+import android.os.Build
 
-class MainActivity : ComponentActivity() {
-    private val exercisesListState = mutableStateOf(listOf<Exercise>())
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContent {
-            ForgeYourStrengthTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    AppNavigation(exercisesListState)
-                }
-            }
-        }
-    }
-}
 
 data class ExerciseSeries(
     var weight: String,
@@ -55,19 +53,89 @@ data class Exercise(
     var series: List<ExerciseSeries> // Details for each series
 )
 
+
+class MainActivity : ComponentActivity() {
+    private lateinit var sharedPref: SharedPreferences
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        sharedPref = getPreferences(Context.MODE_PRIVATE)
+        val defaultLanguage = sharedPref.getString("language", "en") ?: "en"
+        if (defaultLanguage != getCurrentLanguage()) {
+            setLanguage(defaultLanguage)
+        }
+
+        setContent {
+            ForgeYourStrengthTheme {
+                // Provide the 'exercisesListState' and 'onLanguageChange' to 'AppNavigation'
+                val exercisesListState = remember { mutableStateOf(listOf<Exercise>()) }
+                AppNavigation(exercisesListState = exercisesListState, onLanguageChange = { language ->
+                    setLanguage(language)
+                    restartActivity()
+                })
+            }
+        }
+    }
+
+    private fun setLanguage(language: String) {
+        val locale = Locale(language)
+        Locale.setDefault(locale)
+        val config = resources.configuration
+        config.setLocale(locale)
+
+        @Suppress("DEPRECATION")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            createConfigurationContext(config)
+        } else {
+            resources.updateConfiguration(config, resources.displayMetrics)
+        }
+
+        with(sharedPref.edit()) {
+            putString("language", language)
+            apply()
+        }
+        // Call to restart the activity is removed from here; it should be called after this method
+    }
+
+    private fun getCurrentLanguage(): String {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            resources.configuration.locales.get(0).language
+        } else {
+            @Suppress("DEPRECATION")
+            resources.configuration.locale.language
+        }
+    }
+
+    private fun restartActivity() {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        }
+        startActivity(intent)
+        finish()
+    }
+}
+
 @Composable
-fun AppNavigation(exercisesListState: MutableState<List<Exercise>>) {
+fun AppNavigation(
+    exercisesListState: MutableState<List<Exercise>>,
+    onLanguageChange: (String) -> Unit = {} // Provide a default no-op lambda
+) {
     val navController = rememberNavController()
     NavHost(navController = navController, startDestination = "main") {
         composable("main") { MainScreen(navController) }
         composable("training") { DetailScreen(navController, "Rozpocznij trening") }
         composable("createPlan") { DetailScreen(navController, "Utwórz plan treningowy") }
-        composable("editExercises") { EditExercisesScreen(navController) }
         composable("addAssumptions") { DetailScreen(navController, "Dodaj założenia planu treningowego") }
         composable("removeExercise") { DetailScreen(navController, "Usuń ćwiczenie") }
         composable("editExercise") { DetailScreen(navController, "Edytuj ćwiczenie") }
+        composable("editExercises") { EditExercisesScreen(navController) }
         composable("exerciseAdded") { ExerciseAddedScreen(navController) }
         composable("newExercise") { NewExerciseScreen(navController, exercisesListState) }
+        composable("settings") { SettingsScreen(navController) }
+        composable("language") {
+            LanguageScreen(navController, onLanguageChange)
+        }
     }
 }
 
@@ -118,6 +186,15 @@ fun MainScreen(navController: NavController) {
             shape = MaterialTheme.shapes.medium
         ) {
             Text("Dodaj założenia planu treningowego")
+        }
+        Button(
+            onClick = { navController.navigate("settings") },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
+            shape = MaterialTheme.shapes.medium
+        ) {
+            Text("Ustawienia")
         }
     }
 }
@@ -383,11 +460,128 @@ fun SeriesDetailInput(
     }
 }
 
+@Composable
+fun SettingsScreen(navController: NavController) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            "Ustawienia",
+            style = MaterialTheme.typography.headlineMedium
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Theme Mode Button
+        Button(
+            onClick = { /* TODO: Implement theme switching logic */ },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp)
+        ) {
+            Text("Tryb")
+        }
+
+        // Units Button
+        Button(
+            onClick = { /* TODO: Implement unit switching logic */ },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp)
+        ) {
+            Text("Jednostki")
+        }
+
+        // Language Button
+        Button(
+            onClick = { navController.navigate("language") },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp)
+        ) {
+            Text("Język")
+        }
+    }
+}
+
+@Composable
+fun LanguageScreen(navController: NavController, onLanguageChange: (String) -> Unit) {
+    val context = LocalContext.current
+    val sharedPref = context.getSharedPreferences(
+        "com.example.forgeyourstrength.PREFERENCE_FILE_KEY",
+        Context.MODE_PRIVATE
+    )
+
+    // State variables to hold the checkbox status
+    var isPolish by remember { mutableStateOf(sharedPref.getString("language", "English") == "Polski") }
+    var isEnglish by remember { mutableStateOf(sharedPref.getString("language", "English") == "English") }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            text = if(isPolish) "Wybierz język" else "Select language",
+            style = MaterialTheme.typography.headlineMedium
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Polish Checkbox
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(
+                checked = isPolish,
+                onCheckedChange = { selected ->
+                    if (selected) {
+                        isPolish = true
+                        isEnglish = false
+                        sharedPref.edit().putString("language", "Polski").apply()
+                        onLanguageChange("Polski")
+                        // This is where you could trigger a recomposition
+                    }
+                }
+            )
+            Text(text = if(isPolish) "Polski" else "Polish")
+        }
+
+        // English Checkbox
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(
+                checked = isEnglish,
+                onCheckedChange = { selected ->
+                    if (selected) {
+                        isEnglish = true
+                        isPolish = false
+                        sharedPref.edit().putString("language", "English").apply()
+                        onLanguageChange("English")
+                        // This is where you could trigger a recomposition
+                    }
+                }
+            )
+            Text(text = if(isPolish) "Angielski" else "English")
+        }
+
+        // Back Button
+        Button(
+            onClick = { navController.popBackStack() },
+            modifier = Modifier.padding(top = 16.dp)
+        ) {
+            Text(text = if(isPolish) "Powrót" else "Back")
+        }
+    }
+}
+
 @Preview(showBackground = true)
 @Composable
 fun DefaultPreview() {
     ForgeYourStrengthTheme {
         // Provide a dummy MutableState object for the preview
-        AppNavigation(mutableStateOf(listOf()))
+        val dummyState = remember { mutableStateOf(listOf<Exercise>()) }
+        AppNavigation(exercisesListState = dummyState)
     }
 }
