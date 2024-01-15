@@ -37,7 +37,9 @@ import android.os.Build
 data class ExerciseSeries(
     var weight: String,
     var repetitionsCount: String,
-    var duration: String
+    var duration: String,
+    var distance: String = "", // Add this
+    var secondDistanceData: String = "" // And this
 )
 
 data class Exercise(
@@ -52,7 +54,6 @@ data class Exercise(
     var duration: String, // General duration if not done in series
     var series: List<ExerciseSeries> // Details for each series
 )
-
 
 class MainActivity : ComponentActivity() {
     private lateinit var sharedPref: SharedPreferences
@@ -240,39 +241,70 @@ fun EditExercisesScreen(navController: NavController) {
     }
 }
 
-
 @Composable
-fun SeriesDetailInput(seriesDetail: ExerciseSeries, seriesNumber: Int, onSeriesDetailChanged: (ExerciseSeries) -> Unit) {
+fun SeriesDetailInput(seriesDetail: ExerciseSeries,
+                      seriesNumber: Int,
+                      onSeriesDetailChanged: (ExerciseSeries) -> Unit,
+                      isWeighted: Boolean,
+                      isRepetitive: Boolean,
+                      isTimed: Boolean,
+                      isDistanceBased: Boolean,
+                      distance: String,
+                      secondDistanceData: String,
+                      onDistanceChanged: (String) -> Unit,
+                      onSecondDistanceDataChanged: (String) -> Unit
+) {
     var weight by remember { mutableStateOf(seriesDetail.weight) }
     var repetitionsCount by remember { mutableStateOf(seriesDetail.repetitionsCount) }
     var duration by remember { mutableStateOf(seriesDetail.duration) }
 
     Column {
         Text("Seria $seriesNumber")
-        TextField(
-            value = weight,
-            onValueChange = {
-                weight = it
-                onSeriesDetailChanged(seriesDetail.copy(weight = it))
-            },
-            label = { Text("Ciężar") }
-        )
-        TextField(
-            value = repetitionsCount,
-            onValueChange = {
-                repetitionsCount = it
-                onSeriesDetailChanged(seriesDetail.copy(repetitionsCount = it))
-            },
-            label = { Text("Ilość powtórzeń") }
-        )
-        TextField(
-            value = duration,
-            onValueChange = {
-                duration = it
-                onSeriesDetailChanged(seriesDetail.copy(duration = it))
-            },
-            label = { Text("Czas trwania (hh:mm:ss)") }
-        )
+        if (isWeighted) {
+            TextField(
+                value = weight,
+                onValueChange = { updatedWeight ->
+                    onSeriesDetailChanged(seriesDetail.copy(weight = updatedWeight))
+                },
+                label = { Text("Ciężar") }
+            )
+        }
+        if (isRepetitive) {
+            TextField(
+                value = repetitionsCount,
+                onValueChange = { updatedRepetitions ->
+                    onSeriesDetailChanged(seriesDetail.copy(repetitionsCount = updatedRepetitions))
+                },
+                label = { Text("Ilość powtórzeń") }
+            )
+        }
+        if (isTimed) {
+            TextField(
+                value = duration,
+                onValueChange = { updatedDuration ->
+                    onSeriesDetailChanged(seriesDetail.copy(duration = updatedDuration))
+                },
+                label = { Text("Czas trwania (hh:mm:ss)") }
+            )
+        }
+        if (isDistanceBased) {
+            TextField(
+                value = distance,
+                onValueChange = { updatedDistance ->
+                    onDistanceChanged(updatedDistance)
+                    onSeriesDetailChanged(seriesDetail.copy(distance = updatedDistance))
+                },
+                label = { Text("Dystans") }
+            )
+            TextField(
+                value = secondDistanceData,
+                onValueChange = { updatedSecondDistanceData ->
+                    onSecondDistanceDataChanged(updatedSecondDistanceData)
+                    // Update the state or data model with the second distance data if needed
+                },
+                label = { Text("Dodatkowe dane dystansowe") }
+            )
+        }
     }
 }
 
@@ -287,8 +319,18 @@ fun NewExerciseScreen(navController: NavController, exercisesListState: MutableS
     var repetitionsCount by remember { mutableStateOf("") }
     var isTimed by remember { mutableStateOf(false) }
     var duration by remember { mutableStateOf("") }
+    var isDistanceBased by remember { mutableStateOf(false) }
+    var distance by remember { mutableStateOf("") }
+    var secondDistanceData by remember { mutableStateOf("") }
 
-    val seriesDetails = remember { mutableStateListOf<ExerciseSeries>() }
+    val seriesDetails = remember { mutableStateListOf<ExerciseSeries>().also {
+        if (isSeries) {
+            val count = seriesCount.toIntOrNull() ?: 0
+            for (i in 0 until count) {
+                it.add(ExerciseSeries("", "", "", "", ""))
+            }
+        }
+    } }
 
     // React to changes in seriesCount
     LaunchedEffect(key1 = seriesCount) {
@@ -354,6 +396,40 @@ fun NewExerciseScreen(navController: NavController, exercisesListState: MutableS
             Text("Wykonywane czasowo")
         }
 
+        // Distance Checkbox
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(
+                checked = isDistanceBased,
+                onCheckedChange = {
+                    isDistanceBased = it
+                    if (!it) {
+                        // Reset the distance data if 'Wykonywane dystansowo' is unchecked
+                        distance = ""
+                        secondDistanceData = ""
+                    }
+                }
+            )
+            Text("Wykonywane dystansowo")
+        }
+
+        if (isSeries && isDistanceBased) {
+            OutlinedTextField(
+                value = distance,
+                onValueChange = { distance = it },
+                label = { Text("Dystans") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedTextField(
+                value = secondDistanceData,
+                onValueChange = { secondDistanceData = it },
+                label = { Text("Dodatkowe dane dystansowe") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+
         // Series count field
         if (isSeries) {
             OutlinedTextField(
@@ -363,6 +439,23 @@ fun NewExerciseScreen(navController: NavController, exercisesListState: MutableS
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
+            if (isDistanceBased) {
+                OutlinedTextField(
+                    value = distance,
+                    onValueChange = { distance = it },
+                    label = { Text("Dystans") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = secondDistanceData,
+                    onValueChange = { secondDistanceData = it },
+                    label = { Text("Dodatkowe dane dystansowe") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
 
         // Series details
@@ -375,7 +468,18 @@ fun NewExerciseScreen(navController: NavController, exercisesListState: MutableS
                 },
                 isWeighted = isWeighted,
                 isRepetitive = isRepetitive,
-                isTimed = isTimed
+                isTimed = isTimed,
+                isDistanceBased = isDistanceBased,
+                distance = seriesDetail.distance,
+                secondDistanceData = seriesDetail.secondDistanceData,
+                onDistanceChanged = { updatedDistance ->
+                    // Handle the distance change
+                    seriesDetails[index] = seriesDetails[index].copy(distance = updatedDistance)
+                },
+                onSecondDistanceDataChanged = { updatedSecondDistanceData ->
+                    // Handle the second distance data change
+                    seriesDetails[index] = seriesDetails[index].copy(secondDistanceData = updatedSecondDistanceData)
+                }
             )
         }
 
@@ -401,7 +505,6 @@ fun NewExerciseScreen(navController: NavController, exercisesListState: MutableS
 }
 
 
-
 @Composable
 fun ExerciseAddedScreen(navController: NavController) {
     Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
@@ -419,46 +522,6 @@ fun DetailScreen(navController: NavController, buttonName: String) {
     }
 }
 
-@Composable
-fun SeriesDetailInput(
-    seriesDetail: ExerciseSeries,
-    seriesNumber: Int,
-    onSeriesDetailChanged: (ExerciseSeries) -> Unit,
-    isWeighted: Boolean,
-    isRepetitive: Boolean,
-    isTimed: Boolean
-) {
-    Column {
-        Text("Seria $seriesNumber")
-        if (isWeighted) {
-            TextField(
-                value = seriesDetail.weight,
-                onValueChange = { updatedWeight ->
-                    onSeriesDetailChanged(seriesDetail.copy(weight = updatedWeight))
-                },
-                label = { Text("Ciężar") }
-            )
-        }
-        if (isRepetitive) {
-            TextField(
-                value = seriesDetail.repetitionsCount,
-                onValueChange = { updatedRepetitions ->
-                    onSeriesDetailChanged(seriesDetail.copy(repetitionsCount = updatedRepetitions))
-                },
-                label = { Text("Ilość powtórzeń") }
-            )
-        }
-        if (isTimed) {
-            TextField(
-                value = seriesDetail.duration,
-                onValueChange = { updatedDuration ->
-                    onSeriesDetailChanged(seriesDetail.copy(duration = updatedDuration))
-                },
-                label = { Text("Czas trwania (hh:mm:ss)") }
-            )
-        }
-    }
-}
 
 @Composable
 fun SettingsScreen(navController: NavController) {
@@ -482,7 +545,7 @@ fun SettingsScreen(navController: NavController) {
                 .fillMaxWidth()
                 .padding(8.dp)
         ) {
-            Text("Tryb")
+            Text("Motyw")
         }
 
         // Units Button
