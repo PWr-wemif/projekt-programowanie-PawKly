@@ -10,20 +10,23 @@ class ExerciseViewModel(private val exerciseEntityDao: ExerciseEntityDao, privat
     // Funkcja do dodawania nowego ćwiczenia
     fun addExercise(exercise: ExerciseEntity) {
         viewModelScope.launch(Dispatchers.IO) {
-            // Najpierw wstawiamy serię ćwiczeń do bazy danych, aby uzyskać ich ID
-            val seriesIds = exercise.series.map { series ->
+            // Assuming exerciseSeriesDao.insert returns a Long and never null.
+            val seriesIdsLong = exercise.series.map { series ->
                 exerciseSeriesDao.insert(convertExerciseSeriesToDB(series))
             }
 
-            // Konwersja ExerciseEntity na ExerciseEntityDB przed wstawieniem do bazy danych
+            // Converting Long list to Int list assuming all values are within Int range.
+            val seriesIds = seriesIdsLong.map { it.toInt() }
+
+            // Make sure that seriesIds is the correct type expected by convertExerciseEntityToDB
             val exerciseDB = convertExerciseEntityToDB(exercise, seriesIds)
             exerciseEntityDao.insert(exerciseDB)
         }
     }
 
     // Metoda do konwersji ExerciseEntity na ExerciseEntityDB
-    private fun convertExerciseEntityToDB(exercise: ExerciseEntity, seriesIds: List<Long>): ExerciseEntityDB {
-        // Należy również upewnić się, że klasa ExerciseEntityDB jest zdefiniowana z listą seriesIds typu List<Long>
+    private fun convertExerciseEntityToDB(exercise: ExerciseEntity, seriesIds: List<Int>): ExerciseEntityDB {
+        // Należy również upewnić się, że klasa ExerciseEntityDB jest zdefiniowana z listą seriesIds typu List<Int>
         return ExerciseEntityDB(
             name = exercise.name,
             isWeighted = exercise.isWeighted,
@@ -34,7 +37,7 @@ class ExerciseViewModel(private val exerciseEntityDao: ExerciseEntityDao, privat
             repetitionsCount = exercise.repetitionsCount,
             isTimed = exercise.isTimed,
             duration = exercise.duration,
-            seriesIds = seriesIds // Lista ID serii typu Long
+            seriesIds = seriesIds // Lista ID serii typu Int
         )
     }
 
