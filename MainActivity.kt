@@ -52,9 +52,10 @@ class ExerciseEntity(
 )
 
 class YourApplication : Application() {
-    // Usuwamy leniwe inicjalizacje, ponieważ mogą one prowadzić do błędów w przypadku odwołania przed ich zainicjalizowaniem
     val database: AppDatabase = AppDatabase.getDatabase(this)
-    val repository: ExerciseRepository = ExerciseRepository(database.exerciseDao())
+    val exerciseDao: ExerciseEntityDao by lazy { database.exerciseDao() }
+    val exerciseSeriesDao: ExerciseSeriesDao by lazy { database.exerciseSeriesDao() }
+    val repository by lazy { ExerciseRepository(exerciseDao, exerciseSeriesDao) }
 }
 
 class ExerciseViewModelFactory(private val repository: ExerciseRepository) : ViewModelProvider.Factory {
@@ -68,10 +69,9 @@ class ExerciseViewModelFactory(private val repository: ExerciseRepository) : Vie
 }
 
 class ExerciseRepository(private val exerciseDao: ExerciseEntityDao, private val exerciseSeriesDao: ExerciseSeriesDao) {
-    // Przykładowe metody dostępu do bazy danych
     fun getAllExercises() = exerciseDao.getAll()
-    fun insertExercise(entity: ExerciseEntityDB) = exerciseDao.insert(entity)
-    // Inne metody...
+    fun insertExercise(entity: ExerciseEntity) = exerciseDao.insert(entity)
+
 }
 
 class MainActivity : ComponentActivity() {
@@ -79,7 +79,7 @@ class MainActivity : ComponentActivity() {
 
     // Zaktualizowano, aby korzystać z konkretnego dostawcy fabryki ViewModel
     private val exerciseViewModel: ExerciseViewModel by viewModels {
-        ExerciseViewModelFactory((applicationContext as YourApplication).repository)
+        ExerciseViewModelFactory((application as YourApplication).repository)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
