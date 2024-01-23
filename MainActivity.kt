@@ -1,37 +1,33 @@
 package com.example.forgeyourstrength
 
+import android.app.Application
+import android.content.Context
+import android.content.Intent
+import android.content.SharedPreferences
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.forgeyourstrength.ui.theme.ForgeYourStrengthTheme
-import androidx.navigation.NavController
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.rememberScrollState
-import android.content.Context
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.platform.LocalContext
-import android.app.Activity
-import android.content.Intent
-import androidx.compose.ui.res.stringResource
-import android.content.SharedPreferences
-import java.util.Locale
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.MutableState
-import android.os.Build
+import java.util.*
 
 
 data class ExerciseSeries(
@@ -42,7 +38,7 @@ data class ExerciseSeries(
     var secondDistanceData: String = "" // And this
 )
 
-data class Exercise(
+class ExerciseEntity(
     var name: String,
     var isWeighted: Boolean,
     var weight: String, // General weight if not done in series
@@ -55,12 +51,39 @@ data class Exercise(
     var series: List<ExerciseSeries> // Details for each series
 )
 
+class YourApplication : Application() {
+    // Usuwamy leniwe inicjalizacje, ponieważ mogą one prowadzić do błędów w przypadku odwołania przed ich zainicjalizowaniem
+    val database: AppDatabase = AppDatabase.getDatabase(this)
+    val repository: ExerciseRepository = ExerciseRepository(database.exerciseDao())
+}
+
+class ExerciseViewModelFactory(private val repository: ExerciseRepository) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        if (modelClass.isAssignableFrom(ExerciseViewModel::class.java)) {
+            @Suppress("UNCHECKED_CAST")
+            return ExerciseViewModel(repository) as T
+        }
+        throw IllegalArgumentException("Unknown ViewModel class")
+    }
+}
+
+class ExerciseRepository(private val exerciseDao: ExerciseEntityDao, private val exerciseSeriesDao: ExerciseSeriesDao) {
+    // Przykładowe metody dostępu do bazy danych
+    fun getAllExercises() = exerciseDao.getAll()
+    fun insertExercise(entity: ExerciseEntityDB) = exerciseDao.insert(entity)
+    // Inne metody...
+}
+
 class MainActivity : ComponentActivity() {
     private lateinit var sharedPref: SharedPreferences
 
+    // Zaktualizowano, aby korzystać z konkretnego dostawcy fabryki ViewModel
+    private val exerciseViewModel: ExerciseViewModel by viewModels {
+        ExerciseViewModelFactory((applicationContext as YourApplication).repository)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         sharedPref = getPreferences(Context.MODE_PRIVATE)
         val defaultLanguage = sharedPref.getString("language", "en") ?: "en"
         if (defaultLanguage != getCurrentLanguage()) {
@@ -69,12 +92,15 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             ForgeYourStrengthTheme {
-                // Provide the 'exercisesListState' and 'onLanguageChange' to 'AppNavigation'
-                val exercisesListState = remember { mutableStateOf(listOf<Exercise>()) }
-                AppNavigation(exercisesListState = exercisesListState, onLanguageChange = { language ->
-                    setLanguage(language)
-                    restartActivity()
-                })
+                val exercisesListState = remember { mutableStateOf(listOf<ExerciseEntity>()) }
+                AppNavigation(
+                    exercisesListState = exercisesListState,
+                    exerciseViewModel = exerciseViewModel, // Pass it here
+                    onLanguageChange = { language ->
+                        setLanguage(language)
+                        restartActivity()
+                    }
+                )
             }
         }
     }
@@ -119,8 +145,9 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun AppNavigation(
-    exercisesListState: MutableState<List<Exercise>>,
-    onLanguageChange: (String) -> Unit = {} // Provide a default no-op lambda
+    exercisesListState: MutableState<List<ExerciseEntity>>,
+    exerciseViewModel: ExerciseViewModel = viewModel(), // This provides a default ViewModel instance
+    onLanguageChange: (String) -> Unit = {}
 ) {
     val navController = rememberNavController()
     NavHost(navController = navController, startDestination = "main") {
@@ -132,7 +159,7 @@ fun AppNavigation(
         composable("editExercise") { DetailScreen(navController, "Edytuj ćwiczenie") }
         composable("editExercises") { EditExercisesScreen(navController) }
         composable("exerciseAdded") { ExerciseAddedScreen(navController) }
-        composable("newExercise") { NewExerciseScreen(navController, exercisesListState) }
+        composable("newExercise") { NewExerciseScreen(navController, exercisesListState, exerciseViewModel) }
         composable("settings") { SettingsScreen(navController) }
         composable("language") {
             LanguageScreen(navController, onLanguageChange)
@@ -256,7 +283,9 @@ fun SeriesDetailInput(seriesDetail: ExerciseSeries,
 ) {
     var weight by remember { mutableStateOf(seriesDetail.weight) }
     var repetitionsCount by remember { mutableStateOf(seriesDetail.repetitionsCount) }
-    var duration by remember { mutableStateOf(seriesDetail.duration) }
+    var hours by remember { mutableStateOf("") }
+    var minutes by remember { mutableStateOf("") }
+    var seconds by remember { mutableStateOf("") }
 
     Column {
         Text("Seria $seriesNumber")
@@ -278,38 +307,74 @@ fun SeriesDetailInput(seriesDetail: ExerciseSeries,
                 label = { Text("Ilość powtórzeń") }
             )
         }
-        if (isTimed) {
-            TextField(
-                value = duration,
-                onValueChange = { updatedDuration ->
-                    onSeriesDetailChanged(seriesDetail.copy(duration = updatedDuration))
-                },
-                label = { Text("Czas trwania (hh:mm:ss)") }
-            )
+
+        // Funkcja do aktualizacji duration
+        fun updateDuration() {
+            val updatedDuration = "$hours:$minutes:$seconds"
+            onSeriesDetailChanged(seriesDetail.copy(duration = updatedDuration))
         }
+
+        if (isTimed) {
+            Row {
+                TextField(
+                    value = hours,
+                    onValueChange = {
+                        hours = it
+                        updateDuration()
+                    },
+                    label = { Text("Godziny") },
+                    modifier = Modifier.weight(1f)
+                )
+                TextField(
+                    value = minutes,
+                    onValueChange = {
+                        minutes = it
+                        updateDuration()
+                    },
+                    label = { Text("Minuty") },
+                    modifier = Modifier.weight(1f)
+                )
+                TextField(
+                    value = seconds,
+                    onValueChange = {
+                        seconds = it
+                        updateDuration()
+                    },
+                    label = { Text("Sekundy") },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+
         if (isDistanceBased) {
-            TextField(
-                value = distance,
-                onValueChange = { updatedDistance ->
-                    onDistanceChanged(updatedDistance)
-                    onSeriesDetailChanged(seriesDetail.copy(distance = updatedDistance))
-                },
-                label = { Text("Dystans") }
-            )
-            TextField(
-                value = secondDistanceData,
-                onValueChange = { updatedSecondDistanceData ->
-                    onSecondDistanceDataChanged(updatedSecondDistanceData)
-                    // Update the state or data model with the second distance data if needed
-                },
-                label = { Text("Dodatkowe dane dystansowe") }
-            )
+            Row{
+                TextField(
+                    value = seriesDetail.distance,
+                    onValueChange = { updatedDistance ->
+                        onSeriesDetailChanged(seriesDetail.copy(distance = updatedDistance))
+                    },
+                    label = { Text("Jednostka 1") },
+                    modifier = Modifier.weight(1f)
+                )
+                TextField(
+                    value = seriesDetail.secondDistanceData,
+                    onValueChange = { updatedSecondDistanceData ->
+                        onSeriesDetailChanged(seriesDetail.copy(secondDistanceData = updatedSecondDistanceData))
+                    },
+                    label = { Text("Jednostka 2") },
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
     }
 }
 
 @Composable
-fun NewExerciseScreen(navController: NavController, exercisesListState: MutableState<List<Exercise>>) {
+fun NewExerciseScreen(
+    navController: NavController,
+    exercisesListState: MutableState<List<ExerciseEntity>>,
+    exerciseViewModel: ExerciseViewModel
+) {
     var exerciseName by remember { mutableStateOf("") }
     var isWeighted by remember { mutableStateOf(false) }
     var weight by remember { mutableStateOf("") }
@@ -412,23 +477,6 @@ fun NewExerciseScreen(navController: NavController, exercisesListState: MutableS
             Text("Wykonywane dystansowo")
         }
 
-        if (isSeries && isDistanceBased) {
-            OutlinedTextField(
-                value = distance,
-                onValueChange = { distance = it },
-                label = { Text("Dystans") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedTextField(
-                value = secondDistanceData,
-                onValueChange = { secondDistanceData = it },
-                label = { Text("Dodatkowe dane dystansowe") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
 
         // Series count field
         if (isSeries) {
@@ -439,23 +487,6 @@ fun NewExerciseScreen(navController: NavController, exercisesListState: MutableS
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
-            if (isDistanceBased) {
-                OutlinedTextField(
-                    value = distance,
-                    onValueChange = { distance = it },
-                    label = { Text("Dystans") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = secondDistanceData,
-                    onValueChange = { secondDistanceData = it },
-                    label = { Text("Dodatkowe dane dystansowe") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
         }
 
         // Series details
@@ -484,7 +515,7 @@ fun NewExerciseScreen(navController: NavController, exercisesListState: MutableS
         }
 
         Button(onClick = {
-            val newExercise = Exercise(
+            val newExerciseEntity = ExerciseEntity(
                 name = exerciseName,
                 isWeighted = isWeighted,
                 weight = if (isWeighted && !isSeries) weight else "",
@@ -496,7 +527,7 @@ fun NewExerciseScreen(navController: NavController, exercisesListState: MutableS
                 duration = if (isTimed && !isSeries) duration else "",
                 series = seriesDetails.toList()
             )
-            exercisesListState.value = exercisesListState.value + newExercise
+            exerciseViewModel.addExercise(newExerciseEntity)
             navController.navigate("exerciseAdded")
         }, modifier = Modifier.fillMaxWidth()) {
             Text("Zapisz ćwiczenie")
@@ -644,7 +675,7 @@ fun LanguageScreen(navController: NavController, onLanguageChange: (String) -> U
 fun DefaultPreview() {
     ForgeYourStrengthTheme {
         // Provide a dummy MutableState object for the preview
-        val dummyState = remember { mutableStateOf(listOf<Exercise>()) }
+        val dummyState = remember { mutableStateOf(listOf<ExerciseEntity>()) }
         AppNavigation(exercisesListState = dummyState)
     }
 }
