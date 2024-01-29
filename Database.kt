@@ -12,19 +12,10 @@ data class ExerciseSeriesDB(
     var repetitionsCount: String,
     var duration: String,
     var distance: String = "",
-    var secondDistanceData: String = "",
-    var seriesIds: List<Long>
+    var secondDistanceData: String = ""
 )
 
-@Entity(
-    tableName = "exercise_entity",
-    foreignKeys = [ForeignKey(
-        entity = ExerciseSeriesDB::class,
-        parentColumns = ["id"],
-        childColumns = ["seriesId"],
-        onDelete = ForeignKey.CASCADE
-    )]
-)
+@Entity(tableName = "exercise_entity")
 data class ExerciseEntityDB(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     var name: String,
@@ -37,7 +28,7 @@ data class ExerciseEntityDB(
     var isTimed: Boolean,
     var duration: String,
     @TypeConverters(Converters::class)
-    var seriesIds: List<Int> // Changed to seriesIds
+    var seriesIds: List<Long>
 )
 
 @Dao
@@ -86,13 +77,13 @@ abstract class AppDatabase : RoomDatabase() {
 
 class Converters {
     @TypeConverter
-    fun fromString(value: String): List<Int> {
-        val listType = object : TypeToken<List<Int>>() {}.type
+    fun fromStringToLongList(value: String): List<Long> {
+        val listType = object : TypeToken<List<Long>>() {}.type
         return Gson().fromJson(value, listType)
     }
 
     @TypeConverter
-    fun fromList(list: List<Int>): String {
+    fun fromLongListToString(list: List<Long>): String {
         val gson = Gson()
         return gson.toJson(list)
     }
