@@ -28,6 +28,12 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.forgeyourstrength.ui.theme.ForgeYourStrengthTheme
 import java.util.*
+import com.example.forgeyourstrength.ExerciseEntityDao
+import com.example.forgeyourstrength.ExerciseViewModelFactory
+import com.example.forgeyourstrength.YourApplication
+import com.example.forgeyourstrength.ExerciseViewModel
+
+
 
 
 data class ExerciseSeries(
@@ -35,7 +41,7 @@ data class ExerciseSeries(
     var repetitionsCount: String,
     var duration: String,
     var distance: String = "", // Add this
-    var secondDistanceData: String = "" // And this
+    var secondDistanceData: String  = "" // And this
 )
 
 class ExerciseEntity(
@@ -52,11 +58,12 @@ class ExerciseEntity(
 )
 
 class YourApplication : Application() {
-    val database: AppDatabase = AppDatabase.getDatabase(this)
-    val exerciseDao: ExerciseEntityDao by lazy { database.exerciseDao() }
+    val database: AppDatabase by lazy { AppDatabase.getDatabase(this) }
+    val exerciseDao: ExerciseEntityDao by lazy { database.exerciseEntityDao() }
     val exerciseSeriesDao: ExerciseSeriesDao by lazy { database.exerciseSeriesDao() }
-    val repository by lazy { ExerciseRepository(exerciseDao, exerciseSeriesDao) }
+    val repository: ExerciseRepository by lazy { ExerciseRepository(exerciseDao, exerciseSeriesDao) }
 }
+
 
 class ExerciseViewModelFactory(private val repository: ExerciseRepository) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -68,10 +75,17 @@ class ExerciseViewModelFactory(private val repository: ExerciseRepository) : Vie
     }
 }
 
-class ExerciseRepository(private val exerciseDao: ExerciseEntityDao, private val exerciseSeriesDao: ExerciseSeriesDao) {
-    fun getAllExercises() = exerciseDao.getAll()
-    fun insertExercise(entity: ExerciseEntity) = exerciseDao.insert(entity)
+class ExerciseRepository(
+    private val exerciseDao: ExerciseEntityDao,
+    private val exerciseSeriesDao: ExerciseSeriesDao
+) {
+    fun insertExerciseSeries(exerciseSeries: ExerciseSeriesDB): Long {
+        return exerciseSeriesDao.insert(exerciseSeries)
+    }
 
+    fun insertExercise(exerciseEntity: ExerciseEntityDB) {
+        exerciseDao.insert(exerciseEntity)
+    }
 }
 
 class MainActivity : ComponentActivity() {
@@ -79,7 +93,7 @@ class MainActivity : ComponentActivity() {
 
     // Zaktualizowano, aby korzystać z konkretnego dostawcy fabryki ViewModel
     private val exerciseViewModel: ExerciseViewModel by viewModels {
-        ExerciseViewModelFactory((application as YourApplication).repository)
+        ExerciseViewModelFactory((applicationContext as YourApplication).repository)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
